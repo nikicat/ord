@@ -1,4 +1,5 @@
 use super::*;
+use crate::runes::MAX_DIVISIBILITY;
 
 pub(crate) enum Chunkiness {
   Fine,
@@ -21,31 +22,30 @@ impl From<f64> for Chunkiness {
 }
 
 impl Chunkiness {
-  pub(crate) fn calculate_factor(divisibility: u64, supply: u64) -> f64 {
+  pub(crate) fn calculate_factor(supply: u64, divisibility: u8) -> f64 {
     // (((divisibility + 1) * supply) as f64).log10()
 
-    let unit_count = supply.saturating_mul(divisibility + 1);
+    assert!(divisibility <= MAX_DIVISIBILITY);
 
-    unit_count
+
+    let total_unit_count = supply.saturating_mul(10_u64.pow(divisibility as u32));
+
+    total_unit_count as f64
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::runes::MAX_DIVISIBILITY;
 
   use super::*;
 
   #[test]
   fn chunkiness() {
-    assert!(false);
+    println!("Chunkiest: {}", Chunkiness::calculate_factor(1, 0));
+    println!("Bitcoin: {}", Chunkiness::calculate_factor(21_000_000, 8));
     println!(
       "Fine: {}",
-      Chunkiness::calculate_factor(MAX_DIVISIBILITY.into(), u64::MAX)
+      Chunkiness::calculate_factor(1, MAX_DIVISIBILITY)
     );
-
-    println!("Bitcoin: {}", Chunkiness::calculate_factor(8, 21_000_000));
-
-    println!("Chunkiest: {}", Chunkiness::calculate_factor(0, 1));
   }
 }
