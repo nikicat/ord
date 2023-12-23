@@ -689,6 +689,46 @@ impl Index {
     }
   }
 
+  pub(crate) fn export_images(&self, dirpath: &String) -> Result {
+    let rtx = self.database.begin_read()?;
+
+    let sequence_number_to_inscription_entry =
+      rtx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
+
+    let inscriptions = sequence_number_to_inscription_entry
+      .iter()?
+      .rev()
+      .flat_map(|result| result.map(|(_number, entry)| InscriptionEntry::load(entry.value()).id))
+      .collect::<Vec<InscriptionId>>();
+
+    for inscription_id in inscriptions {
+      let inscription = self.get_inscription_by_id(inscription_id)?.unwrap();
+  
+      if let Some(content_type) = inscription.content_type() {
+        if content_type.starts_with("image/") {
+          self.export_image(dirpath, inscription_id, inscription)?;
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  fn export_image(&self, dirpath: &String, inscription_id: InscriptionId, inscription: Inscription) -> Result {
+    if let Some(content_type) = inscription.content_type() {
+      let extension = content_type.rsplit_once("/").unwrap().1;
+      let filename = format!("{}.{}", inscription_id, extension);
+      if let Some(body) = inscription.into_body() {
+        let path = Path::new(dirpath).join(filename);
+        let mut file = File::create(path)?;
+        // Write a slice of bytes to the file
+        file.write_all(body.as_slice())?;
+      }
+    }
+
+    Ok(())
+  }
+
   pub(crate) fn export(&self, filename: &String, include_addresses: bool) -> Result {
     let mut writer = BufWriter::new(File::create(filename)?);
     let rtx = self.database.begin_read()?;

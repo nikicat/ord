@@ -18,3 +18,21 @@ impl Export {
     Ok(Box::new(Empty {}))
   }
 }
+
+
+#[derive(Debug, Parser)]
+pub(crate) struct ExportImages {
+  #[arg(long, help = "Write files to <DIR>")]
+  dir: String,
+}
+
+impl ExportImages {
+  pub(crate) fn run(self, options: Options) -> SubcommandResult {
+    let index = Index::open(&options)?;
+
+    index.update()?;
+    index.export_images(&self.dir)?;
+
+    Ok(Box::new(Empty {}))
+  }
+}
