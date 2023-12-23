@@ -695,13 +695,9 @@ impl Index {
     let sequence_number_to_inscription_entry =
       rtx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
 
-    let inscriptions = sequence_number_to_inscription_entry
-      .iter()?
-      .rev()
-      .flat_map(|result| result.map(|(_number, entry)| InscriptionEntry::load(entry.value()).id))
-      .collect::<Vec<InscriptionId>>();
-
-    for inscription_id in inscriptions {
+    for entry in sequence_number_to_inscription_entry.iter()? {
+      let inscription_id = InscriptionEntry::load(entry?.1.value()).id;
+    
       let inscription = self.get_inscription_by_id(inscription_id)?.unwrap();
   
       if let Some(content_type) = inscription.content_type() {
