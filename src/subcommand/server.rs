@@ -217,6 +217,7 @@ impl Server {
         .route("/inscription/:inscription_query", get(Self::inscription))
         .route("/inscriptions", get(Self::inscriptions))
         .route("/inscriptions/:page", get(Self::inscriptions_paginated))
+        .route("/inscriptions/:page/:page_size", get(Self::inscriptions_paginated_size))
         .route(
           "/inscriptions/block/:height",
           get(Self::inscriptions_in_block),
@@ -1407,7 +1408,23 @@ impl Server {
     Path(page_index): Path<usize>,
     accept_json: AcceptJson,
   ) -> ServerResult<Response> {
-    let (inscriptions, more_inscriptions) = index.get_inscriptions_paginated(100, page_index)?;
+    Self::inscriptions_paginated_size(
+      Extension(server_config),
+      Extension(index),
+      Path((page_index, 100)),
+      accept_json,
+    )
+    .await
+  }
+
+
+  async fn inscriptions_paginated_size(
+    Extension(server_config): Extension<Arc<ServerConfig>>,
+    Extension(index): Extension<Arc<Index>>,
+    Path((page_index, page_size)): Path<(usize, usize)>,
+    accept_json: AcceptJson,
+  ) -> ServerResult<Response> {
+    let (inscriptions, more_inscriptions) = index.get_inscriptions_paginated(page_size, page_index)?;
 
     let prev = page_index.checked_sub(1);
 
