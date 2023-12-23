@@ -8,6 +8,8 @@ mod update;
 pub(crate) enum IndexSubcommand {
   #[command(about = "Write inscription numbers and ids to a tab-separated file")]
   Export(export::Export),
+  #[command(about = "Write inscription images to a directory")]
+  ExportImages(export::ExportImages),
   #[command(about = "Print index statistics")]
   Info(info::Info),
   #[command(about = "Update the index", alias = "run")]
@@ -18,6 +20,7 @@ impl IndexSubcommand {
   pub(crate) fn run(self, options: Options) -> SubcommandResult {
     match self {
       Self::Export(export) => export.run(options),
+      Self::ExportImages(export) => export.run(options),
       Self::Info(info) => info.run(options),
       Self::Update => update::run(options),
     }

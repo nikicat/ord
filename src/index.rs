@@ -26,6 +26,7 @@ use {
     io::{BufWriter, Write},
     sync::Once,
   },
+  infer,
 };
 
 pub(crate) use self::entry::RuneEntry;
@@ -687,6 +688,46 @@ impl Index {
         }
       }
     }
+  }
+
+  pub(crate) fn export_images(&self, dirpath: &String) -> Result {
+    let rtx = self.database.begin_read()?;
+
+    let table =
+      rtx.open_table(INSCRIPTION_ID_TO_SEQUENCE_NUMBER)?;
+    let len = table.len()?;
+
+    let progress_bar = ProgressBar::new(len);
+    progress_bar.set_style(
+      ProgressStyle::with_template("[exporting images] {wide_bar} {pos}/{len} ETA: {eta}").unwrap(),
+    );
+
+    for entry in table.iter()? {
+      if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
+        break;
+      }
+      let inscription_id = InscriptionId::load(entry?.0.value());
+      self.export_image(dirpath, inscription_id)?;
+      progress_bar.inc(1);
+    }
+
+    Ok(())
+  }
+
+  fn export_image(&self, dirpath: &String, inscription_id: InscriptionId) -> Result {
+    if let Some(inscription) = self.get_inscription_by_id_unchecked(inscription_id)? {
+      if let Some(body) = inscription.into_body() {
+        if infer::is_image(&body) || infer::is_video(&body) {
+          let kind = infer::get(&body).expect("inscription should have a type");
+          let filename = format!("{}.{}", inscription_id, kind.extension());
+          let path = Path::new(dirpath).join(filename);
+          let mut file = File::create(path)?;
+          file.write_all(&body)?;
+        }
+      }
+    }
+
+    Ok(())
   }
 
   pub(crate) fn export(&self, filename: &String, include_addresses: bool) -> Result {
@@ -1380,7 +1421,13 @@ impl Index {
     if !self.inscription_exists(inscription_id)? {
       return Ok(None);
     }
+    self.get_inscription_by_id_unchecked(inscription_id)
+  }
 
+  pub(crate) fn get_inscription_by_id_unchecked(
+    &self,
+    inscription_id: InscriptionId,
+  ) -> Result<Option<Inscription>> {
     Ok(self.get_transaction(inscription_id.txid)?.and_then(|tx| {
       ParsedEnvelope::from_transaction(&tx)
         .into_iter()
