@@ -729,6 +729,9 @@ impl Index {
     );
 
     for entry in sequence_number_to_inscription_entry.iter()? {
+      if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
+        break;
+      }
       let inscription_id = InscriptionEntry::load(entry?.1.value()).id;
       self.export_image(dirpath, inscription_id)?;
       progress_bar.inc(1);
