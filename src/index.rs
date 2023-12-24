@@ -24,9 +24,12 @@ use {
   std::{
     collections::{BTreeSet, HashMap},
     io::{BufWriter, Write},
-    sync::Once,
+    sync::mpsc,
+    thread,
   },
 };
+
+use redb::RepairSession;
 
 pub(crate) use self::entry::RuneEntry;
 
@@ -224,13 +227,36 @@ impl Index {
     let index_sats;
 
     let index_path = path.clone();
-    let once = Once::new();
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+      match rx.recv() {
+        Err(e) => println!("error receiving progress: {e:?}"),
+        Ok(pos) =>
+        if cfg!(test)
+        || log_enabled!(log::Level::Info)
+        || integration_test() {
+        } else {
+          println!("Index file `{}` needs recovery. This can take a long time, especially for the --index-sats index.", index_path.display());
+          let progress_bar = ProgressBar::new(100);
+          progress_bar.set_position(pos);
+          progress_bar.set_style(
+            ProgressStyle::with_template("[repairing database] {wide_bar} {pos}/{len}").unwrap(),
+          );
+          for pos in rx.iter() {
+            progress_bar.set_position(pos);
+          }
+        }
+      };
+    });
+
     let database = match Database::builder()
       .set_cache_size(db_cache_size)
-      .set_repair_callback(move |_| {
-        once.call_once(|| {
-          println!("Index file `{}` needs recovery. This can take a long time, especially for the --index-sats index.", index_path.display());
-        })
+      .set_repair_callback(move |progress: &mut RepairSession| {
+        match tx.send((progress.progress()*100.) as u64) {
+          Err(e) => println!("failed to send progress: {e:?}"),
+          Ok(_) => {},
+        }
       })
       .open(&path)
     {
@@ -697,12 +723,11 @@ impl Index {
 
     for entry in sequence_number_to_inscription_entry.iter()? {
       let inscription_id = InscriptionEntry::load(entry?.1.value()).id;
-    
-      let inscription = self.get_inscription_by_id(inscription_id)?.unwrap();
-  
-      if let Some(content_type) = inscription.content_type() {
-        if content_type.starts_with("image/") {
-          self.export_image(dirpath, inscription_id, inscription)?;
+      if let Some(inscription) = self.get_inscription_by_id(inscription_id)? {
+        if let Some(content_type) = inscription.content_type() {
+          if content_type.starts_with("image/") {
+            self.export_image(dirpath, inscription_id, inscription)?;
+          }
         }
       }
     }
