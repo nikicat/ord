@@ -728,12 +728,24 @@ impl Index {
       ProgressStyle::with_template("[exporting images] {wide_bar} {pos}/{len} ETA: {eta}").unwrap(),
     );
 
+    // Cache existing files to skip them later
+    let paths = fs::read_dir(dirpath)?;
+    let files: HashSet<String> = paths
+      .filter_map(|e| e.ok())
+      .filter_map(|e| e.metadata().ok().zip(Some(e)))
+      .filter_map(|(md, e)| (md.is_file() && md.len() > 0).then_some(e))
+      .filter_map(|e| e.file_name().into_string().ok())
+      .filter_map(|filename| filename.split_once('.').and_then(|(basename,_)| String::from_str(basename).ok()))
+      .collect();
+
     for entry in table.iter()? {
       if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
         break;
       }
       let inscription_id = InscriptionId::load(entry?.0.value());
-      self.export_image(dirpath, inscription_id)?;
+      if !files.contains(&inscription_id.to_string()) {
+        self.export_image(dirpath, inscription_id)?;
+      }
       progress_bar.inc(1);
     }
 
