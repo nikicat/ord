@@ -714,23 +714,38 @@ impl Index {
   }
 
   pub(crate) fn export_images(&self, dirpath: &String) -> Result {
-    let rtx = self.database.begin_read()?;
+    // Cache existing files to skip them later
+    let paths = fs::read_dir(dirpath)?;
+    println!("indexing already exported files");
+    let mut files: HashSet<String> = paths
+      .filter_map(|e| e.ok())
+      .filter_map(|e| e.metadata().ok().zip(Some(e)))
+      .filter_map(|(md, e)| (md.is_file() && md.len() > 0).then_some(e))
+      .filter_map(|e| e.file_name().into_string().ok())
+      .filter_map(|filename| filename.split_once('.').and_then(|(basename,_)| String::from_str(basename).ok()))
+      .collect();
+    println!("skipping {} already exported files", files.len());
 
+    let rtx = self.database.begin_read()?;
     let table =
       rtx.open_table(INSCRIPTION_ID_TO_SEQUENCE_NUMBER)?;
+    println!("calculating total inscription count, be patient...");
     let len = table.len()?;
-
     let progress_bar = ProgressBar::new(len);
     progress_bar.set_style(
       ProgressStyle::with_template("[exporting images] {wide_bar} {pos}/{len} ETA: {eta}").unwrap(),
     );
-
-    for entry in table.iter()? {
+    for (entry, _) in table.iter()?.filter_map(|e| e.ok()) {
       if SHUTTING_DOWN.load(atomic::Ordering::Relaxed) {
         break;
       }
-      let inscription_id = InscriptionId::load(entry?.0.value());
-      self.export_image(dirpath, inscription_id)?;
+      let inscription_id = InscriptionId::load(entry.value());
+      let ins_name = inscription_id.to_string();
+      if !files.contains(&ins_name) {
+        self.export_image(dirpath, inscription_id)?;
+      } else {
+        files.remove(&ins_name);
+      }
       progress_bar.inc(1);
     }
 
