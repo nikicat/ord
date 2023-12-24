@@ -27,6 +27,7 @@ use {
     sync::mpsc,
     thread,
   },
+  infer,
 };
 
 use redb::RepairSession;
@@ -720,30 +721,32 @@ impl Index {
 
     let sequence_number_to_inscription_entry =
       rtx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
+    let len = sequence_number_to_inscription_entry.len()?;
+
+    let progress_bar = ProgressBar::new(len);
+    progress_bar.set_style(
+      ProgressStyle::with_template("[exporting images] {wide_bar} {pos}/{len} ETA: {eta}").unwrap(),
+    );
 
     for entry in sequence_number_to_inscription_entry.iter()? {
       let inscription_id = InscriptionEntry::load(entry?.1.value()).id;
-      if let Some(inscription) = self.get_inscription_by_id(inscription_id)? {
-        if let Some(content_type) = inscription.content_type() {
-          if content_type.starts_with("image/") {
-            self.export_image(dirpath, inscription_id, inscription)?;
-          }
-        }
-      }
+      self.export_image(dirpath, inscription_id)?;
+      progress_bar.inc(1);
     }
 
     Ok(())
   }
 
-  fn export_image(&self, dirpath: &String, inscription_id: InscriptionId, inscription: Inscription) -> Result {
-    if let Some(content_type) = inscription.content_type() {
-      let extension = content_type.rsplit_once("/").unwrap().1;
-      let filename = format!("{}.{}", inscription_id, extension);
+  fn export_image(&self, dirpath: &String, inscription_id: InscriptionId) -> Result {
+    if let Some(inscription) = self.get_inscription_by_id(inscription_id)? {
       if let Some(body) = inscription.into_body() {
-        let path = Path::new(dirpath).join(filename);
-        let mut file = File::create(path)?;
-        // Write a slice of bytes to the file
-        file.write_all(body.as_slice())?;
+        if infer::is_image(&body) || infer::is_video(&body) {
+          let kind = infer::get(&body).expect("inscription should have a type");
+          let filename = format!("{}.{}", inscription_id, kind.extension());
+          let path = Path::new(dirpath).join(filename);
+          let mut file = File::create(path)?;
+          file.write_all(&body)?;
+        }
       }
     }
 
