@@ -18,18 +18,15 @@ use {
   log::log_enabled,
   redb::{
     Database, DatabaseError, MultimapTable, MultimapTableDefinition, MultimapTableHandle,
-    ReadableMultimapTable, ReadableTable, RedbKey, RedbValue, StorageError, Table, TableDefinition,
+    ReadableMultimapTable, ReadableTable, RedbKey, RedbValue, RepairSession, StorageError, Table, TableDefinition,
     TableHandle, WriteTransaction,
   },
   std::{
     collections::{BTreeSet, HashMap},
     io::{BufWriter, Write},
-    sync::mpsc,
-    thread,
+    sync::{Mutex, Once},
   },
 };
-
-use redb::RepairSession;
 
 pub(crate) use self::entry::RuneEntry;
 
@@ -227,32 +224,28 @@ impl Index {
     let index_sats;
 
     let index_path = path.clone();
-
-    let (tx, rx) = mpsc::channel();
-    if cfg!(test)
-    || log_enabled!(log::Level::Info)
-    || integration_test() {
-    } else {
-      thread::spawn(move || {
-        if let Some(pos) = rx.recv().ok() {
-            println!("Index file `{}` needs recovery. This can take a long time, especially for the --index-sats index.", index_path.display());
-            let progress_bar = ProgressBar::new(100);
-            progress_bar.set_position(pos);
-            progress_bar.set_style(
-              ProgressStyle::with_template("[repairing database] {wide_bar} {pos}/{len}").unwrap(),
-            );
-            for pos in rx.iter() {
-              progress_bar.set_position(pos);
-            }
-        };
-      });
-    }
+    let progress_bar_mut = Mutex::new(None);
+    let once = Once::new();
 
     let database = match Database::builder()
       .set_cache_size(db_cache_size)
       .set_repair_callback(move |progress: &mut RepairSession| {
-        if let Some(err) = tx.send((progress.progress()*100.) as u64).ok() {
-          println!("failed to send progress: {err:?}");
+        once.call_once(|| println!("Index file `{}` needs recovery. This can take a long time, especially for the --index-sats index.", index_path.display()));
+        if cfg!(test)
+        || log_enabled!(log::Level::Info)
+        || integration_test() {
+          let mut progress_bar = progress_bar_mut.lock().unwrap();
+          if progress_bar.is_none() {
+            *progress_bar = Some(ProgressBar::new(100));
+          }
+          if let Some(p_bar) = progress_bar.as_ref() {
+            let pos = (progress.progress()*100.) as u64;
+            p_bar.set_position(pos);
+            p_bar.set_style(
+              ProgressStyle::with_template("[repairing database] {wide_bar} {pos}/{len}").unwrap(),
+            );
+            p_bar.set_position(pos);
+          }
         }
       })
       .open(&path)
