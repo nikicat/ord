@@ -234,6 +234,7 @@ impl Index {
         if cfg!(test)
         || log_enabled!(log::Level::Info)
         || integration_test() {
+        } else {
           let mut progress_bar = progress_bar_mut.lock().unwrap();
           if progress_bar.is_none() {
             *progress_bar = Some(ProgressBar::new(100));
