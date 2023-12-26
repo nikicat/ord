@@ -235,18 +235,14 @@ impl Index {
         || log_enabled!(log::Level::Info)
         || integration_test() {
         } else {
-          let mut progress_bar = progress_bar_mut.lock().unwrap();
-          if progress_bar.is_none() {
-            *progress_bar = Some(ProgressBar::new(100));
-          }
-          if let Some(p_bar) = progress_bar.as_ref() {
-            let pos = (progress.progress()*100.) as u64;
-            p_bar.set_position(pos);
-            p_bar.set_style(
-              ProgressStyle::with_template("[repairing database] {wide_bar} {pos}/{len}").unwrap(),
-            );
-            p_bar.set_position(pos);
-          }
+          let mut progress_bar_guard = progress_bar_mut.lock().unwrap();
+          let progress_bar = progress_bar_guard.get_or_insert_with(|| ProgressBar::new(100));
+          let pos = (progress.progress()*100.) as u64;
+          progress_bar.set_position(pos);
+          progress_bar.set_style(
+            ProgressStyle::with_template("[repairing database] {wide_bar} {pos}/{len}").unwrap(),
+          );
+          progress_bar.set_position(pos);
         }
       })
       .open(&path)
