@@ -7,6 +7,7 @@ pub(super) struct RuneUpdater<'a, 'tx, 'client> {
   pub(super) event_sender: Option<&'a mpsc::Sender<Event>>,
   pub(super) height: u32,
   pub(super) id_to_entry: &'a mut Table<'tx, RuneIdValue, RuneEntryValue>,
+  pub(super) include_runes: Option<&'a HashSet<Rune>>,
   pub(super) inscription_id_to_sequence_number: &'a Table<'tx, InscriptionIdValue, u32>,
   pub(super) minimum: Rune,
   pub(super) outpoint_to_balances: &'a mut Table<'tx, &'static OutPointValue, &'static [u8]>,
@@ -351,6 +352,7 @@ impl<'a, 'tx, 'client> RuneUpdater<'a, 'tx, 'client> {
       if rune < self.minimum
         || rune.is_reserved()
         || self.rune_to_id.get(rune.0)?.is_some()
+        || self.include_runes.is_some_and(|include_runes| !include_runes.contains(&rune))
         || !self.tx_commits_to_rune(tx, rune)?
       {
         return Ok(None);
@@ -402,7 +404,7 @@ impl<'a, 'tx, 'client> RuneUpdater<'a, 'tx, 'client> {
   fn tx_commits_to_rune(&self, tx: &Transaction, rune: Rune) -> Result<bool> {
     let commitment = rune.commitment();
 
-    for input in &tx.input {
+    for (idx, input) in tx.input.iter().enumerate() {
       // extracting a tapscript does not indicate that the input being spent
       // was actually a taproot output. this is checked below, when we load the
       // output's entry from the database
@@ -424,6 +426,11 @@ impl<'a, 'tx, 'client> RuneUpdater<'a, 'tx, 'client> {
           continue;
         }
 
+        let tx_id = tx.txid();
+        log::info!(
+          "Checking rune etch commitment for {rune} tx {tx_id}:{idx}",
+        );
+      
         let Some(tx_info) = self
           .client
           .get_raw_transaction_info(&input.previous_output.txid, None)

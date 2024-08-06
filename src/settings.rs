@@ -18,6 +18,7 @@ pub struct Settings {
   height_limit: Option<u32>,
   hidden: Option<HashSet<InscriptionId>>,
   http_port: Option<u16>,
+  include_runes: Option<HashSet<Rune>>,
   index: Option<PathBuf>,
   index_addresses: bool,
   index_cache_size: Option<usize>,
@@ -135,6 +136,15 @@ impl Settings {
           .collect(),
       ),
       http_port: self.http_port.or(source.http_port),
+      include_runes: Some(
+        self
+        .include_runes
+        .iter()
+        .flatten()
+        .chain(source.include_runes.iter().flatten())
+        .cloned()
+        .collect(),
+      ),
       index: self.index.or(source.index),
       index_addresses: self.index_addresses || source.index_addresses,
       index_cache_size: self.index_cache_size.or(source.index_cache_size),
@@ -172,6 +182,7 @@ impl Settings {
       height_limit: options.height_limit,
       hidden: None,
       http_port: None,
+      include_runes: None,
       index: options.index,
       index_addresses: options.index_addresses,
       index_cache_size: options.index_cache_size,
@@ -222,6 +233,21 @@ impl Settings {
         })
     };
 
+    let runes = |key| {
+      env
+        .get(key)
+        .map(|runes| {
+          runes
+            .split_whitespace()
+            .map(Rune::from_str)
+            .collect::<Result<HashSet<Rune>, <Rune as FromStr>::Err>>()
+        })
+        .transpose()
+        .with_context(|| {
+          format!("failed to parse environment variable ORD_{key} as inscription list")
+        })
+    };
+
     let get_u16 = |key| {
       env
         .get(key)
@@ -262,6 +288,7 @@ impl Settings {
       height_limit: get_u32("HEIGHT_LIMIT")?,
       hidden: inscriptions("HIDDEN")?,
       http_port: get_u16("HTTP_PORT")?,
+      include_runes: runes("INCLUDE_RUNES")?,
       index: get_path("INDEX"),
       index_addresses: get_bool("INDEX_ADDRESSES"),
       index_cache_size: get_usize("INDEX_CACHE_SIZE")?,
@@ -306,6 +333,7 @@ impl Settings {
       server_password: None,
       server_url: Some(server_url.into()),
       server_username: None,
+      include_runes: None,
     }
   }
 
@@ -369,6 +397,7 @@ impl Settings {
       height_limit: self.height_limit,
       hidden: self.hidden,
       http_port: self.http_port,
+      include_runes: self.include_runes,
       index: Some(index),
       index_addresses: self.index_addresses,
       index_cache_size: Some(match self.index_cache_size {
@@ -587,6 +616,10 @@ impl Settings {
 
   pub fn server_url(&self) -> Option<&str> {
     self.server_url.as_deref()
+  }
+
+  pub fn include_runes(&self) -> Option<&HashSet<Rune>> {
+    self.include_runes.as_ref()
   }
 }
 
@@ -1073,6 +1106,7 @@ mod tests {
           .collect()
         ),
         http_port: Some(8080),
+        include_runes: None,
         index: Some("index".into()),
         index_addresses: true,
         index_cache_size: Some(4),
@@ -1138,6 +1172,7 @@ mod tests {
         height_limit: Some(3),
         hidden: None,
         http_port: None,
+        include_runes: None,
         index: Some("index".into()),
         index_addresses: true,
         index_cache_size: Some(4),

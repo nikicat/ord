@@ -32,7 +32,7 @@ impl From<Block> for BlockData {
   }
 }
 
-pub(crate) struct Updater<'index> {
+pub(crate) struct Updater<'index, 'a> {
   pub(super) height: u32,
   pub(super) index: &'index Index,
   pub(super) outputs_cached: u64,
@@ -40,9 +40,10 @@ pub(crate) struct Updater<'index> {
   pub(super) outputs_traversed: u64,
   pub(super) range_cache: HashMap<OutPointValue, Vec<u8>>,
   pub(super) sat_ranges_since_flush: u64,
+  pub(super) include_runes: Option<&'a HashSet<Rune>>,
 }
 
-impl<'index> Updater<'index> {
+impl<'index, 'a> Updater<'index, 'a> {
   pub(crate) fn update_index(&mut self, mut wtx: WriteTransaction) -> Result {
     let start = Instant::now();
     let starting_height = u32::try_from(self.index.client.get_block_count()?).unwrap() + 1;
@@ -200,6 +201,7 @@ impl<'index> Updater<'index> {
     first_inscription_height: u32,
   ) -> Result<Option<Block>> {
     let mut errors = 0;
+    let start = Instant::now();
     loop {
       match client
         .get_block_hash(height.into())
@@ -234,7 +236,10 @@ impl<'index> Updater<'index> {
 
           thread::sleep(Duration::from_secs(seconds));
         }
-        Ok(result) => return Ok(result),
+        Ok(result) => {
+          log::info!("block fetched in {} ms", start.elapsed().as_millis());
+          return Ok(result);
+        },
       }
     }
   }
@@ -654,6 +659,7 @@ impl<'index> Updater<'index> {
         sequence_number_to_rune_id: &mut sequence_number_to_rune_id,
         statistic_to_count: &mut statistic_to_count,
         transaction_id_to_rune: &mut transaction_id_to_rune,
+        include_runes: self.include_runes,
       };
 
       for (i, (tx, txid)) in block.txdata.iter().enumerate() {

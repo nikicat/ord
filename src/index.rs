@@ -635,7 +635,8 @@ impl Index {
           .next_back()
           .transpose()?
           .map(|(height, _header)| height.value() + 1)
-          .unwrap_or(0),
+          .unwrap_or(self.settings.chain().first_rune_height()),
+        include_runes: self.settings.include_runes(),
         index: self,
         outputs_cached: 0,
         outputs_inserted_since_flush: 0,
